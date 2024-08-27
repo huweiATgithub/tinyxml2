@@ -45,19 +45,41 @@ distribution.
 	{
 		va_list va;
 		va_start( va, format );
-		const int result = vsnprintf_s( buffer, size, _TRUNCATE, format, va );
+        #ifdef TC_VER
+        const int result = vsnprintf(buffer, size, format, va);
+        #else
+        const int result = vsnprintf_s(buffer, size, _TRUNCATE, format, va);
+        #endif
 		va_end( va );
 		return result;
 	}
 
 	static inline int TIXML_VSNPRINTF( char* buffer, size_t size, const char* format, va_list va )
 	{
-		const int result = vsnprintf_s( buffer, size, _TRUNCATE, format, va );
+        #ifdef TC_VER
+        const int result = vsnprintf(buffer, size, format, va);
+        #else
+        const int result = vsnprintf_s(buffer, size, _TRUNCATE, format, va);
+        #endif
 		return result;
 	}
 
-	#define TIXML_VSCPRINTF	_vscprintf
-	#define TIXML_SSCANF	sscanf_s
+    #ifdef TC_VER
+
+    static inline int TIXML_VSCPRINTF(const char* format, va_list va)
+    {
+        return vsnprintf(nullptr, 0, format, va);
+    }
+
+    #define TIXML_SSCANF	sscanf
+
+    #else
+
+    #define TIXML_VSCPRINTF	_vscprintf
+    #define TIXML_SSCANF	sscanf_s
+
+    #endif
+
 #elif defined _MSC_VER
 	// Microsoft Visual Studio 2003 and earlier or WinCE
 	#define TIXML_SNPRINTF	_snprintf
@@ -2315,22 +2337,6 @@ XMLUnknown* XMLDocument::NewUnknown( const char* str )
     return unk;
 }
 
-static FILE* callfopen( const char* filepath, const char* mode )
-{
-    TIXMLASSERT( filepath );
-    TIXMLASSERT( mode );
-#if defined(_MSC_VER) && (_MSC_VER >= 1400 ) && (!defined WINCE)
-    FILE* fp = 0;
-    const errno_t err = fopen_s( &fp, filepath, mode );
-    if ( err ) {
-        return 0;
-    }
-#else
-    FILE* fp = fopen( filepath, mode );
-#endif
-    return fp;
-}
-
 void XMLDocument::DeleteNode( XMLNode* node )	{
     TIXMLASSERT( node );
     TIXMLASSERT(node->_document == this );
@@ -2347,110 +2353,6 @@ void XMLDocument::DeleteNode( XMLNode* node )	{
         XMLNode::DeleteNode(node);
     }
 }
-
-
-XMLError XMLDocument::LoadFile( const char* filename )
-{
-    if ( !filename ) {
-        TIXMLASSERT( false );
-        SetError( XML_ERROR_FILE_COULD_NOT_BE_OPENED, 0, "filename=<null>" );
-        return _errorID;
-    }
-
-    Clear();
-    FILE* fp = callfopen( filename, "rb" );
-    if ( !fp ) {
-        SetError( XML_ERROR_FILE_NOT_FOUND, 0, "filename=%s", filename );
-        return _errorID;
-    }
-    LoadFile( fp );
-    fclose( fp );
-    return _errorID;
-}
-
-XMLError XMLDocument::LoadFile( FILE* fp )
-{
-    Clear();
-
-    TIXML_FSEEK( fp, 0, SEEK_SET );
-    if ( fgetc( fp ) == EOF && ferror( fp ) != 0 ) {
-        SetError( XML_ERROR_FILE_READ_ERROR, 0, 0 );
-        return _errorID;
-    }
-
-    TIXML_FSEEK( fp, 0, SEEK_END );
-
-    unsigned long long filelength;
-    {
-        const long long fileLengthSigned = TIXML_FTELL( fp );
-        TIXML_FSEEK( fp, 0, SEEK_SET );
-        if ( fileLengthSigned == -1L ) {
-            SetError( XML_ERROR_FILE_READ_ERROR, 0, 0 );
-            return _errorID;
-        }
-        TIXMLASSERT( fileLengthSigned >= 0 );
-        filelength = static_cast<unsigned long long>(fileLengthSigned);
-    }
-
-    const size_t maxSizeT = static_cast<size_t>(-1);
-    // We'll do the comparison as an unsigned long long, because that's guaranteed to be at
-    // least 8 bytes, even on a 32-bit platform.
-    if ( filelength >= static_cast<unsigned long long>(maxSizeT) ) {
-        // Cannot handle files which won't fit in buffer together with null terminator
-        SetError( XML_ERROR_FILE_READ_ERROR, 0, 0 );
-        return _errorID;
-    }
-
-    if ( filelength == 0 ) {
-        SetError( XML_ERROR_EMPTY_DOCUMENT, 0, 0 );
-        return _errorID;
-    }
-
-    const size_t size = static_cast<size_t>(filelength);
-    TIXMLASSERT( _charBuffer == 0 );
-    _charBuffer = new char[size+1];
-    const size_t read = fread( _charBuffer, 1, size, fp );
-    if ( read != size ) {
-        SetError( XML_ERROR_FILE_READ_ERROR, 0, 0 );
-        return _errorID;
-    }
-
-    _charBuffer[size] = 0;
-
-    Parse();
-    return _errorID;
-}
-
-
-XMLError XMLDocument::SaveFile( const char* filename, bool compact )
-{
-    if ( !filename ) {
-        TIXMLASSERT( false );
-        SetError( XML_ERROR_FILE_COULD_NOT_BE_OPENED, 0, "filename=<null>" );
-        return _errorID;
-    }
-
-    FILE* fp = callfopen( filename, "w" );
-    if ( !fp ) {
-        SetError( XML_ERROR_FILE_COULD_NOT_BE_OPENED, 0, "filename=%s", filename );
-        return _errorID;
-    }
-    SaveFile(fp, compact);
-    fclose( fp );
-    return _errorID;
-}
-
-
-XMLError XMLDocument::SaveFile( FILE* fp, bool compact )
-{
-    // Clear any error from the last save, otherwise it will get reported
-    // for *this* call.
-    ClearError();
-    XMLPrinter stream( fp, compact );
-    Print( &stream );
-    return _errorID;
-}
-
 
 XMLError XMLDocument::Parse( const char* xml, size_t nBytes )
 {
@@ -2487,10 +2389,6 @@ void XMLDocument::Print( XMLPrinter* streamer ) const
 {
     if ( streamer ) {
         Accept( streamer );
-    }
-    else {
-        XMLPrinter stdoutStreamer( stdout );
-        Accept( &stdoutStreamer );
     }
 }
 
@@ -2544,12 +2442,6 @@ const char* XMLDocument::ErrorStr() const
 	return _errorStr.Empty() ? "" : _errorStr.GetStr();
 }
 
-
-void XMLDocument::PrintError() const
-{
-    printf("%s\n", ErrorStr());
-}
-
 const char* XMLDocument::ErrorName() const
 {
     return ErrorIDToName(_errorID);
@@ -2585,11 +2477,10 @@ void XMLDocument::PopDepth()
 	--_parsingDepth;
 }
 
-XMLPrinter::XMLPrinter( FILE* file, bool compact, int depth ) :
+XMLPrinter::XMLPrinter( bool compact, int depth ) :
     _elementJustOpened( false ),
     _stack(),
     _firstElement( true ),
-    _fp( file ),
     _depth( depth ),
     _textDepth( -1 ),
     _processEntities( true ),
@@ -2617,47 +2508,31 @@ void XMLPrinter::Print( const char* format, ... )
 {
     va_list     va;
     va_start( va, format );
-
-    if ( _fp ) {
-        vfprintf( _fp, format, va );
-    }
-    else {
-        const int len = TIXML_VSCPRINTF( format, va );
-        // Close out and re-start the va-args
-        va_end( va );
-        TIXMLASSERT( len >= 0 );
-        va_start( va, format );
-        TIXMLASSERT( _buffer.Size() > 0 && _buffer[_buffer.Size() - 1] == 0 );
-        char* p = _buffer.PushArr( len ) - 1;	// back up over the null terminator.
-		TIXML_VSNPRINTF( p, len+1, format, va );
-    }
+    const int len = TIXML_VSCPRINTF(format, va);
+    // Close out and re-start the va-args
+    va_end(va);
+    TIXMLASSERT(len >= 0);
+    va_start(va, format);
+    TIXMLASSERT(_buffer.Size() > 0 && _buffer[_buffer.Size() - 1] == 0);
+    char* p = _buffer.PushArr(len) - 1;	// back up over the null terminator.
+    TIXML_VSNPRINTF( p, len+1, format, va );
     va_end( va );
 }
 
 
 void XMLPrinter::Write( const char* data, size_t size )
 {
-    if ( _fp ) {
-        fwrite ( data , sizeof(char), size, _fp);
-    }
-    else {
-        char* p = _buffer.PushArr( static_cast<int>(size) ) - 1;   // back up over the null terminator.
-        memcpy( p, data, size );
-        p[size] = 0;
-    }
+    char* p = _buffer.PushArr( static_cast<int>(size) ) - 1;   // back up over the null terminator.
+    memcpy( p, data, size );
+    p[size] = 0;
 }
 
 
 void XMLPrinter::Putc( char ch )
 {
-    if ( _fp ) {
-        fputc ( ch, _fp);
-    }
-    else {
-        char* p = _buffer.PushArr( sizeof(char) ) - 1;   // back up over the null terminator.
-        p[0] = ch;
-        p[1] = 0;
-    }
+    char* p = _buffer.PushArr( sizeof(char) ) - 1;   // back up over the null terminator.
+    p[0] = ch;
+    p[1] = 0;
 }
 
 

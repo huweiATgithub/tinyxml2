@@ -1,3 +1,8 @@
+Support for TwinCAT 3 C++ projects
+==================================
+This repository is a fork of the original TinyXML-2 repository. It is intended to provide support for TwinCAT 3 C++ projects.
+Currently, all files IO related functions are removed.
+
 TinyXML-2
 =========
 

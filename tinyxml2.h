@@ -34,11 +34,18 @@ distribution.
 #		include <stddef.h>
 #	endif
 #else
+#ifdef TC_VER
+#   include <cctype>
+#   include <cstdio>
+#   include <cstdlib>
+#   include <cstring>
+#else
 #   include <cctype>
 #   include <climits>
 #   include <cstdio>
 #   include <cstdlib>
 #   include <cstring>
+#endif
 #endif
 #include <stdint.h>
 
@@ -1752,42 +1759,6 @@ public:
     */
     XMLError Parse( const char* xml, size_t nBytes=static_cast<size_t>(-1) );
 
-    /**
-    	Load an XML file from disk.
-    	Returns XML_SUCCESS (0) on success, or
-    	an errorID.
-    */
-    XMLError LoadFile( const char* filename );
-
-    /**
-    	Load an XML file from disk. You are responsible
-    	for providing and closing the FILE*.
-
-        NOTE: The file should be opened as binary ("rb")
-        not text in order for TinyXML-2 to correctly
-        do newline normalization.
-
-    	Returns XML_SUCCESS (0) on success, or
-    	an errorID.
-    */
-    XMLError LoadFile( FILE* );
-
-    /**
-    	Save the XML file to disk.
-    	Returns XML_SUCCESS (0) on success, or
-    	an errorID.
-    */
-    XMLError SaveFile( const char* filename, bool compact = false );
-
-    /**
-    	Save the XML file to disk. You are responsible
-    	for providing and closing the FILE*.
-
-    	Returns XML_SUCCESS (0) on success, or
-    	an errorID.
-    */
-    XMLError SaveFile( FILE* fp, bool compact = false );
-
     bool ProcessEntities() const		{
         return _processEntities;
     }
@@ -1831,7 +1802,7 @@ public:
     	// printer.CStr() has a const char* to the XML
     	@endverbatim
     */
-    void Print( XMLPrinter* streamer=0 ) const;
+    void Print( XMLPrinter* streamer) const;
     virtual bool Accept( XMLVisitor* visitor ) const override;
 
     /**
@@ -1895,9 +1866,6 @@ public:
         diagnostic with location, line number, and/or additional info.
     */
 	const char* ErrorStr() const;
-
-    /// A (trivial) utility function that prints the ErrorStr() to stdout.
-    void PrintError() const;
 
     /// Return the line where the error occurred, or zero if unknown.
     int ErrorLineNum() const
@@ -2246,7 +2214,7 @@ public:
     	If 'compact' is set to true, then output is created
     	with only required whitespace and newlines.
     */
-    XMLPrinter( FILE* file=0, bool compact = false, int depth = 0 );
+    XMLPrinter(bool compact = false, int depth = 0 );
     virtual ~XMLPrinter()	{}
 
     /** If streaming, write the BOM and declaration. */
@@ -2353,7 +2321,6 @@ private:
     void PrintString( const char*, bool restrictedEntitySet );	// prints out, after detecting entities.
 
     bool _firstElement;
-    FILE* _fp;
     int _depth;
     int _textDepth;
     bool _processEntities;
